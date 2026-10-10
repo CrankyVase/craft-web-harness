@@ -4,6 +4,8 @@
 (() => {
   const APP = document.currentScript.dataset.app;
   const API = `/api/files/${APP}`;
+  const TOKEN = document.currentScript.dataset.token;
+  const call = (u, o = {}) => fetch(u, { ...o, headers: { ...(o.headers || {}), 'X-Craft-Token': TOKEN } });
   const store = {
     get: (k, d) => { try { return JSON.parse(localStorage.getItem('craft.' + k)) ?? d; } catch { return d; } },
     set: (k, v) => { try { localStorage.setItem('craft.' + k, JSON.stringify(v)); } catch {} },
@@ -78,7 +80,7 @@
   const el = (tag, props = {}, ...kids) => { const e = Object.assign(document.createElement(tag), props); e.append(...kids); return e; };
 
   async function listFiles() {
-    const r = await fetch(API, { cache: 'no-store' });
+    const r = await call(API, { cache: 'no-store' });
     if (!r.ok) throw new Error('could not list files');
     return r.json();
   }
@@ -108,12 +110,12 @@
         const del = el('button', { className: 'x', title: 'Delete from server', textContent: '✕', onclick: async (e) => {
           e.stopPropagation();
           if (!confirm(`Delete ${f.name} from the server?`)) return;
-          await fetch(`${API}/${encodeURIComponent(f.name)}`, { method: 'DELETE' });
+          await call(`${API}/${encodeURIComponent(f.name)}`, { method: 'DELETE' });
           render((await listFiles()));
         } });
         row.append(del);
         const pick = async () => {
-          if (!input) { location.href = `${API}/${encodeURIComponent(f.name)}`; return; }
+          if (!input) { const r = await call(`${API}/${encodeURIComponent(f.name)}`); const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(await r.blob()), download: f.name }); origAnchorClick.call(a); return; }
           if (input.multiple) { row.classList.toggle('sel'); chosen.has(f.name) ? chosen.delete(f.name) : chosen.add(f.name); return; }
           await load(input, [f.name]); close();
         };
@@ -129,7 +131,7 @@
     try {
       const dt = new DataTransfer();
       for (const n of names) {
-        const r = await fetch(`${API}/${encodeURIComponent(n)}`);
+        const r = await call(`${API}/${encodeURIComponent(n)}`);
         if (!r.ok) throw new Error('could not read ' + n);
         dt.items.add(new File([await r.blob()], n));
       }
@@ -153,7 +155,7 @@
     const blob = this.hasAttribute('download') && blobs.get(this.href);
     if (!blob) return origAnchorClick.call(this);
     const name = (this.download || 'untitled').replace(/[\/\\]/g, '_').replace(/^\.+/, '') || 'untitled';
-    fetch(`${API}/${encodeURIComponent(name)}`, { method: 'PUT', body: blob })
+    call(`${API}/${encodeURIComponent(name)}`, { method: 'PUT', body: blob })
       .then((r) => { if (!r.ok) throw new Error('server returned ' + r.status); toast(`Saved to server: ${name}`); })
       .catch((e) => { toast(`Server save failed (${e.message}); downloading instead`, true); origAnchorClick.call(this); });
     if (store.get('alsoDownload', false)) origAnchorClick.call(this);

@@ -17,6 +17,12 @@ A launcher and file-saving host for the [Craft apps](https://getartcraft.com/app
 
 Or by hand: `node scripts/update.mjs && node --env-file=.env server.js`. Requires Node 20+, git, no npm packages.
 
+## Security
+
+Sign in with the `.env` login (30-day signed cookie, 5 tries/minute/address). The file API only answers
+same-origin requests that carry a token the server embedded in an app page, scoped to that app, so a
+logged-in browser tab cannot be driven from another site and one app cannot read another's files.
+
 `.env` sets `PORT`, `HOST`, `HARNESS_USER`, `HARNESS_PASS`. Always set the login if the port is reachable
 from anywhere you don't trust: the file API reads and writes disk. Put it behind HTTPS (Caddy, Cloudflare
 tunnel) so the apps get WebGPU and clipboard access, which browsers only allow on secure origins.

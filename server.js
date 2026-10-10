@@ -29,19 +29,6 @@ const TYPES = {
 };
 const typeOf = (p) => TYPES[path.extname(p).toLowerCase()] || 'application/octet-stream';
 
-function authorized(req) {
-  if (!USER && !PASS) return true;
-  const h = req.headers.authorization || '';
-  if (!h.startsWith('Basic ')) return false;
-  const [u, ...rest] = Buffer.from(h.slice(6), 'base64').toString().split(':');
-  const ok = (a, b) => {
-    const x = crypto.createHash('sha256').update(a).digest();
-    const y = crypto.createHash('sha256').update(b).digest();
-    return crypto.timingSafeEqual(x, y);
-  };
-  return ok(u, USER) & ok(rest.join(':'), PASS);
-}
-
 // ---- sessions (signed cookie; changing the password invalidates every session) ----
 const SESSION_KEY = crypto.createHash('sha256').update(`craft-harness|${USER}|${PASS}`).digest();
 const SESSION_DAYS = 30;
@@ -55,6 +42,14 @@ function validSession(req) {
   const a = Buffer.from(sig), b = Buffer.from(sign(exp));
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
+const sessionValue = (req) => (/(?:^|;\s*)craft_session=([^;]+)/.exec(req.headers.cookie || '') || [])[1] || '';
+// API tokens are bound to the login session and a scope (an app id, or 'launcher' for the launcher page).
+const tokenFor = (req, scope) => sign(`tok|${sessionValue(req)}|${scope}`);
+function tokenOk(req, scope) {
+  const got = String(req.headers['x-craft-token'] || '');
+  const want = tokenFor(req, scope);
+  return got.length === want.length && crypto.timingSafeEqual(Buffer.from(got), Buffer.from(want));
+}
 const cookie = (value, maxAge, req) =>
   `craft_session=${value}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}` + (req.headers['x-forwarded-proto'] === 'https' ? '; Secure' : '');
 const checkLogin = (u, p) => {
@@ -65,8 +60,10 @@ const fails = new Map(); // ip -> {n, until}
 function throttled(ip) { const f = fails.get(ip); return f && f.n >= 5 && Date.now() < f.until; }
 function noteFail(ip) { const f = fails.get(ip) || { n: 0, until: 0 }; f.n++; f.until = Date.now() + 60000; fails.set(ip, f); }
 
+const SECURITY = { 'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'SAMEORIGIN', 'Referrer-Policy': 'same-origin',
+  'Cross-Origin-Resource-Policy': 'same-origin', 'Permissions-Policy': 'camera=(), microphone=(), geolocation=()' };
 const send = (res, code, body, headers = {}) => {
-  res.writeHead(code, { 'X-Content-Type-Options': 'nosniff', ...headers });
+  res.writeHead(code, { ...SECURITY, ...headers });
   res.end(body);
 };
 const json = (res, code, obj) => send(res, code, JSON.stringify(obj), { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
@@ -91,6 +88,16 @@ function listFiles(id) {
 }
 
 async function handleApi(req, res, parts) {
+  // Only callable from this site's own pages: same-origin, and carrying the token the server embedded in the page.
+  const site = req.headers['sec-fetch-site'];
+  if (site && site !== 'same-origin') return json(res, 403, { error: 'forbidden' });
+  const origin = req.headers.origin;
+  if (origin && new URL(origin).host !== req.headers.host) return json(res, 403, { error: 'forbidden' });
+  const scope = parts[1] === 'files' ? parts[2] : null;
+  if (USER || PASS) {
+    const ok = tokenOk(req, 'launcher') || (scope && tokenOk(req, scope));
+    if (!ok || (parts[1] === 'apps' && !tokenOk(req, 'launcher'))) return json(res, 403, { error: 'This only works from inside an app.' });
+  }
   // /api/apps | /api/files/<app> | /api/files/<app>/<name>
   if (parts[1] === 'apps' && req.method === 'GET') {
     return json(res, 200, registry.map((a) => ({
@@ -148,7 +155,7 @@ function injectedIndex(file, id) {
   const st = fs.statSync(file);
   const hit = indexCache.get(file);
   if (hit && hit.mtimeMs === st.mtimeMs) return hit.html;
-  const tag = `<script src="/_harness/shim.js" data-app="${id}"></script>`;
+  const tag = `<script src="/_harness/shim.js" data-app="${id}" data-token="@@TOKEN@@"></script>`;
   let html = fs.readFileSync(file, 'utf8');
   html = /<head[^>]*>/i.test(html) ? html.replace(/<head[^>]*>/i, (m) => m + tag) : tag + html;
   indexCache.set(file, { mtimeMs: st.mtimeMs, html });
@@ -194,6 +201,8 @@ function under(base, rel) {
 
 const server = http.createServer(async (req, res) => {
   try {
+    if (req.headers['x-forwarded-proto'] === 'https') res.setHeader('Strict-Transport-Security', 'max-age=31536000');
+    for (const [k, v] of Object.entries(SECURITY)) res.setHeader(k, v);
     const url = new URL(req.url, 'http://x');
     const pathname = decodeURIComponent(url.pathname);
     const parts = pathname.split('/').filter(Boolean);
@@ -218,7 +227,7 @@ const server = http.createServer(async (req, res) => {
       res.setHeader('Set-Cookie', cookie('', 0, req));
       return json(res, 200, { ok: true });
     }
-    if (needsAuth && !validSession(req) && !authorized(req)) {
+    if (needsAuth && !validSession(req)) {
       if (req.method === 'GET' && (req.headers.accept || '').includes('text/html'))
         return send(res, 302, '', { Location: '/login?next=' + encodeURIComponent(req.url) });
       return json(res, 401, { error: 'Authentication required' });
@@ -229,6 +238,7 @@ const server = http.createServer(async (req, res) => {
     if (!['GET', 'HEAD'].includes(req.method)) return json(res, 405, { error: 'method not allowed' });
 
     if (parts[0] === '_harness') {
+      if (/^(launcher|login)\.html$/.test(parts[1] || '')) return send(res, 404, 'Not found');
       const f = under(PUBLIC_DIR, parts.slice(1).join('/'));
       if (f && serveFile(req, res, f)) return;
       return send(res, 404, 'Not found');
@@ -241,11 +251,12 @@ const server = http.createServer(async (req, res) => {
       const f = under(base, rel || 'index.html');
       if (!f) return send(res, 400, 'Bad path');
       const isIndex = f === path.join(base, 'index.html');
-      if (isIndex && fs.existsSync(f)) return serveHtml(req, res, injectedIndex(f, id));
+      if (isIndex && fs.existsSync(f)) return serveHtml(req, res, injectedIndex(f, id).replace('@@TOKEN@@', tokenFor(req, id)));
       if (serveFile(req, res, f, { immutable: HASHED.test(path.basename(f)) })) return;
       return send(res, 404, 'Not found');
     }
-    const f = under(PUBLIC_DIR, pathname === '/' ? 'launcher.html' : parts.join('/'));
+    if (pathname === '/') return serveHtml(req, res, fs.readFileSync(path.join(PUBLIC_DIR, 'launcher.html'), 'utf8').replace('@@TOKEN@@', tokenFor(req, 'launcher')));
+    const f = under(PUBLIC_DIR, parts.join('/'));
     if (f && serveFile(req, res, f)) return;
     send(res, 404, 'Not found');
   } catch (e) {

@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Craft Apps</title>
+<meta name="craft-token" content="@@TOKEN@@">
 <style>
   :root{--bg:#f6f6f4;--card:#fff;--line:#dcdcd6;--text:#1b1b1a;--mute:#6b6b66;--btn:#1b1b1a;--btn-text:#fff}
   @media (prefers-color-scheme:dark){:root{--bg:#141415;--card:#1c1c1f;--line:#34343a;--text:#ececee;--mute:#9a9aa2;--btn:#ececee;--btn-text:#141415}}
@@ -45,23 +46,31 @@
 </main>
 <script>
 document.getElementById('out').onclick = async (e) => { e.preventDefault(); await fetch('/logout', {method:'POST'}); location.href = '/login'; };
+const TOKEN = document.querySelector('meta[name=craft-token]').content;
+const api = (u, o = {}) => fetch(u, { ...o, headers: { ...(o.headers || {}), 'X-Craft-Token': TOKEN }, cache: 'no-store' });
+async function download(id, name) {
+  const r = await api(`/api/files/${id}/${encodeURIComponent(name)}`);
+  if (!r.ok) return alert('Could not download ' + name);
+  const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(await r.blob()), download: name });
+  a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+}
 const fmt = n => n < 1024 ? n + ' B' : n < 1048576 ? (n/1024).toFixed(1) + ' KB' : (n/1048576).toFixed(1) + ' MB';
 const el = (t, p = {}, ...k) => { const e = Object.assign(document.createElement(t), p); e.append(...k); return e; };
 
 async function renderFiles(box, id) {
-  const files = await (await fetch(`/api/files/${id}`, {cache:'no-store'})).json();
+  const files = await (await api(`/api/files/${id}`)).json();
   box.replaceChildren(...(files.length ? files.map(f => {
     const del = el('button', {textContent:'✕', title:'Delete', onclick: async () => {
       if (!confirm(`Delete ${f.name} from the server?`)) return;
-      await fetch(`/api/files/${id}/${encodeURIComponent(f.name)}`, {method:'DELETE'});
+      await api(`/api/files/${id}/${encodeURIComponent(f.name)}`, {method:'DELETE'});
       renderFiles(box, id);
     }});
-    return el('div', {className:'f'}, el('a', {href:`/api/files/${id}/${encodeURIComponent(f.name)}`, textContent:f.name, title:f.name}), el('span', {textContent:fmt(f.size)}), del);
+    return el('div', {className:'f'}, el('a', {href:'#', textContent:f.name, title:f.name, onclick: (e) => { e.preventDefault(); download(id, f.name); }}), el('span', {textContent:fmt(f.size)}), del);
   }) : [el('div', {className:'none', textContent:'No saved files yet.'})]));
 }
 
 (async () => {
-  const apps = await (await fetch('/api/apps', {cache:'no-store'})).json();
+  const apps = await (await api('/api/apps')).json();
   document.getElementById('grid').replaceChildren(...apps.map(a => {
     const box = el('div', {className:'filelist'});
     const filesBtn = el('button', {className:'files', textContent:`Files (${a.files})`, onclick: () => {
