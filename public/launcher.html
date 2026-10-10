@@ -13,6 +13,7 @@
   header{display:flex;align-items:baseline;justify-content:space-between;gap:16px;margin-bottom:28px;flex-wrap:wrap}
   h1{margin:0;font-size:28px;letter-spacing:-.02em}
   header p{margin:0;color:var(--mute)}
+  header p a{color:var(--text);margin-left:6px}
   .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:14px}
   .card{background:var(--card);border:1px solid var(--line);border-top:4px solid var(--accent);border-radius:10px;padding:18px;display:flex;flex-direction:column;gap:10px}
   .card h2{margin:0;font-size:19px}
@@ -38,11 +39,12 @@
 <main>
   <header>
     <h1>Craft Apps</h1>
-    <p>Open-source creative apps, running in your browser, saving to this server.</p>
+    <p>Open-source creative apps, running in your browser, saving to this server. <a href="#" id="out">Sign out</a></p>
   </header>
   <div class="grid" id="grid"></div>
 </main>
 <script>
+document.getElementById('out').onclick = async (e) => { e.preventDefault(); await fetch('/logout', {method:'POST'}); location.href = '/login'; };
 const fmt = n => n < 1024 ? n + ' B' : n < 1048576 ? (n/1024).toFixed(1) + ' KB' : (n/1048576).toFixed(1) + ' MB';
 const el = (t, p = {}, ...k) => { const e = Object.assign(document.createElement(t), p); e.append(...k); return e; };
 

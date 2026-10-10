@@ -50,6 +50,7 @@
   <button class="tab" title="Craft menu" aria-label="Craft menu">&#8962;</button>
   <div class="menu" role="menu">
     <a href="/">All apps</a>
+    <button data-act="out">Sign out</button>
     <button data-act="files">Server files&hellip;</button>
     <label><input type="checkbox" data-opt="copy"> Also download a copy on save</label>
   </div>
@@ -65,6 +66,7 @@
   copyBox.onchange = () => store.set('alsoDownload', copyBox.checked);
   $('.tab').onclick = (e) => { e.stopPropagation(); menu.classList.toggle('on'); };
   addEventListener('pointerdown', (e) => { if (!e.composedPath().includes(host)) menu.classList.remove('on'); }, true);
+  menu.querySelector('[data-act=out]').onclick = async () => { await fetch('/logout', { method: 'POST' }); location.href = '/login'; };
   menu.querySelector('[data-act=files]').onclick = () => { menu.classList.remove('on'); showFiles(null); };
 
   let toastTimer;

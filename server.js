@@ -42,6 +42,29 @@ function authorized(req) {
   return ok(u, USER) & ok(rest.join(':'), PASS);
 }
 
+// ---- sessions (signed cookie; changing the password invalidates every session) ----
+const SESSION_KEY = crypto.createHash('sha256').update(`craft-harness|${USER}|${PASS}`).digest();
+const SESSION_DAYS = 30;
+const sign = (v) => crypto.createHmac('sha256', SESSION_KEY).update(v).digest('base64url');
+function makeSession() { const exp = String(Date.now() + SESSION_DAYS * 864e5); return `${exp}.${sign(exp)}`; }
+function validSession(req) {
+  const m = /(?:^|;\s*)craft_session=([^;]+)/.exec(req.headers.cookie || '');
+  if (!m) return false;
+  const [exp, sig] = m[1].split('.');
+  if (!exp || !sig || Number(exp) < Date.now()) return false;
+  const a = Buffer.from(sig), b = Buffer.from(sign(exp));
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+const cookie = (value, maxAge, req) =>
+  `craft_session=${value}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}` + (req.headers['x-forwarded-proto'] === 'https' ? '; Secure' : '');
+const checkLogin = (u, p) => {
+  const h = (x) => crypto.createHash('sha256').update(String(x)).digest();
+  return crypto.timingSafeEqual(h(u), h(USER)) & crypto.timingSafeEqual(h(p), h(PASS));
+};
+const fails = new Map(); // ip -> {n, until}
+function throttled(ip) { const f = fails.get(ip); return f && f.n >= 5 && Date.now() < f.until; }
+function noteFail(ip) { const f = fails.get(ip) || { n: 0, until: 0 }; f.n++; f.until = Date.now() + 60000; fails.set(ip, f); }
+
 const send = (res, code, body, headers = {}) => {
   res.writeHead(code, { 'X-Content-Type-Options': 'nosniff', ...headers });
   res.end(body);
@@ -171,10 +194,35 @@ function under(base, rel) {
 
 const server = http.createServer(async (req, res) => {
   try {
-    if (!authorized(req)) return send(res, 401, 'Authentication required', { 'WWW-Authenticate': 'Basic realm="Craft web harness", charset="UTF-8"' });
     const url = new URL(req.url, 'http://x');
     const pathname = decodeURIComponent(url.pathname);
     const parts = pathname.split('/').filter(Boolean);
+    const needsAuth = !!(USER || PASS);
+    const ip = req.socket.remoteAddress;
+
+    if (needsAuth && pathname === '/login') {
+      if (req.method === 'POST') {
+        if (throttled(ip)) return json(res, 429, { error: 'Too many attempts. Wait a minute and try again.' });
+        let body = '';
+        for await (const c of req) { body += c; if (body.length > 4096) return json(res, 413, { error: 'too large' }); }
+        let d = {}; try { d = JSON.parse(body); } catch {}
+        if (!checkLogin(d.username ?? '', d.password ?? '')) { noteFail(ip); return json(res, 401, { error: 'Wrong username or password.' }); }
+        fails.delete(ip);
+        res.setHeader('Set-Cookie', cookie(makeSession(), SESSION_DAYS * 86400, req));
+        return json(res, 200, { ok: true });
+      }
+      const f = path.join(PUBLIC_DIR, 'login.html');
+      return send(res, 200, fs.readFileSync(f), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+    }
+    if (needsAuth && pathname === '/logout' && req.method === 'POST') {
+      res.setHeader('Set-Cookie', cookie('', 0, req));
+      return json(res, 200, { ok: true });
+    }
+    if (needsAuth && !validSession(req) && !authorized(req)) {
+      if (req.method === 'GET' && (req.headers.accept || '').includes('text/html'))
+        return send(res, 302, '', { Location: '/login?next=' + encodeURIComponent(req.url) });
+      return json(res, 401, { error: 'Authentication required' });
+    }
 
     if (pathname === '/healthz') return json(res, 200, { ok: true });
     if (parts[0] === 'api') return await handleApi(req, res, parts);

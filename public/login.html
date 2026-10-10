@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in - Craft Apps</title>
+<style>
+  :root{--bg:#f6f6f4;--card:#fff;--line:#dcdcd6;--text:#1b1b1a;--mute:#6b6b66;--btn:#1b1b1a;--btn-text:#fff;--err:#c4262e}
+  @media (prefers-color-scheme:dark){:root{--bg:#141415;--card:#1c1c1f;--line:#34343a;--text:#ececee;--mute:#9a9aa2;--btn:#ececee;--btn-text:#141415;--err:#ff7b7b}}
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100vh;display:grid;place-items:center;background:var(--bg);color:var(--text);font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;padding:16px}
+  form{width:min(380px,100%);background:var(--card);border:1px solid var(--line);border-radius:12px;padding:28px}
+  .dots{display:flex;gap:6px;margin-bottom:18px}
+  .dots i{width:10px;height:10px;border-radius:50%;display:block}
+  h1{margin:0 0 4px;font-size:22px;letter-spacing:-.02em}
+  p.sub{margin:0 0 22px;color:var(--mute)}
+  label{display:block;font-size:13px;font-weight:600;margin-bottom:6px}
+  .field{margin-bottom:16px}
+  .pw{position:relative}
+  input{width:100%;font:inherit;color:var(--text);background:transparent;border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+  input:focus{outline:2px solid var(--text);outline-offset:1px;border-color:transparent}
+  .pw input{padding-right:64px}
+  .pw button{position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:0;color:var(--mute);font:inherit;font-size:13px;cursor:pointer;padding:4px 8px;border-radius:5px}
+  .pw button:hover{color:var(--text)}
+  .go{width:100%;background:var(--btn);color:var(--btn-text);border:0;border-radius:8px;padding:11px;font:inherit;font-weight:600;cursor:pointer}
+  .go:disabled{opacity:.5;cursor:default}
+  .err{color:var(--err);font-size:13px;min-height:20px;margin:0 0 10px}
+  button:focus-visible{outline:2px solid var(--text);outline-offset:2px}
+</style>
+</head>
+<body>
+<form id="f" autocomplete="on">
+  <div class="dots" aria-hidden="true"><i style="background:#e5484d"></i><i style="background:#f5a524"></i><i style="background:#8e4ec6"></i><i style="background:#f1c40f"></i><i style="background:#d6409f"></i><i style="background:#3e63dd"></i><i style="background:#30a46c"></i></div>
+  <h1>Craft Apps</h1>
+  <p class="sub">Sign in to open your apps and saved files.</p>
+  <div class="field"><label for="u">Username</label><input id="u" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required autofocus></div>
+  <div class="field"><label for="p">Password</label><div class="pw"><input id="p" name="password" type="password" autocomplete="current-password" required><button type="button" id="show" aria-label="Show password">Show</button></div></div>
+  <p class="err" id="err" role="alert"></p>
+  <button class="go" id="go">Sign in</button>
+</form>
+<script>
+const $ = (id) => document.getElementById(id);
+$('show').onclick = () => { const h = $('p').type === 'password'; $('p').type = h ? 'text' : 'password'; $('show').textContent = h ? 'Hide' : 'Show'; };
+$('f').onsubmit = async (e) => {
+  e.preventDefault(); $('err').textContent = ''; $('go').disabled = true; $('go').textContent = 'Signing in…';
+  try {
+    const r = await fetch('/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: $('u').value, password: $('p').value }) });
+    if (r.ok) { const n = new URLSearchParams(location.search).get('next') || '/'; location.href = n.startsWith('/') && !n.startsWith('//') ? n : '/'; return; }
+    $('err').textContent = (await r.json()).error || 'Sign in failed.';
+  } catch { $('err').textContent = 'Could not reach the server.'; }
+  $('go').disabled = false; $('go').textContent = 'Sign in'; $('p').select();
+};
+</script>
+</body>
+</html>
