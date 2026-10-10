@@ -1,0 +1,12 @@
+[Unit]
+Description=Craft web harness
+After=network-online.target
+
+[Service]
+WorkingDirectory=%h/Projects/craft-web-harness
+EnvironmentFile=%h/Projects/craft-web-harness/.env
+ExecStart=/usr/bin/env node server.js
+Restart=on-failure
+
+[Install]
+WantedBy=default.target

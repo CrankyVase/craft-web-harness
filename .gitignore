@@ -1,0 +1,4 @@
+apps/
+data/
+.env
+node_modules/

@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Craft Apps</title>
+<style>
+  :root{--bg:#f6f6f4;--card:#fff;--line:#dcdcd6;--text:#1b1b1a;--mute:#6b6b66;--btn:#1b1b1a;--btn-text:#fff}
+  @media (prefers-color-scheme:dark){:root{--bg:#141415;--card:#1c1c1f;--line:#34343a;--text:#ececee;--mute:#9a9aa2;--btn:#ececee;--btn-text:#141415}}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+  main{max-width:1040px;margin:0 auto;padding:40px 16px 64px}
+  header{display:flex;align-items:baseline;justify-content:space-between;gap:16px;margin-bottom:28px;flex-wrap:wrap}
+  h1{margin:0;font-size:28px;letter-spacing:-.02em}
+  header p{margin:0;color:var(--mute)}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:14px}
+  .card{background:var(--card);border:1px solid var(--line);border-top:4px solid var(--accent);border-radius:10px;padding:18px;display:flex;flex-direction:column;gap:10px}
+  .card h2{margin:0;font-size:19px}
+  .blurb{color:var(--mute);margin:0}
+  .meta{display:flex;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--mute)}
+  .meta span{border:1px solid var(--line);border-radius:99px;padding:1px 9px}
+  .actions{display:flex;gap:8px;margin-top:auto;padding-top:6px}
+  .open{flex:1;text-align:center;background:var(--btn);color:var(--btn-text);text-decoration:none;border-radius:7px;padding:9px 12px;font-weight:600}
+  .open[aria-disabled=true]{opacity:.4;pointer-events:none}
+  button.files{background:none;border:1px solid var(--line);color:var(--text);border-radius:7px;padding:9px 12px;cursor:pointer}
+  .filelist{border-top:1px solid var(--line);margin-top:4px;padding-top:8px;display:none;font-size:13px}
+  .filelist.on{display:block}
+  .filelist .f{display:flex;gap:8px;align-items:center;padding:4px 0}
+  .filelist .f a{flex:1;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .filelist .f span{color:var(--mute);font-size:12px}
+  .filelist .f button{background:none;border:0;color:var(--mute);cursor:pointer}
+  .filelist .f button:hover{color:#e5484d}
+  .none{color:var(--mute)}
+  a:focus-visible,button:focus-visible{outline:2px solid var(--text);outline-offset:2px}
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Craft Apps</h1>
+    <p>Open-source creative apps, running in your browser, saving to this server.</p>
+  </header>
+  <div class="grid" id="grid"></div>
+</main>
+<script>
+const fmt = n => n < 1024 ? n + ' B' : n < 1048576 ? (n/1024).toFixed(1) + ' KB' : (n/1048576).toFixed(1) + ' MB';
+const el = (t, p = {}, ...k) => { const e = Object.assign(document.createElement(t), p); e.append(...k); return e; };
+
+async function renderFiles(box, id) {
+  const files = await (await fetch(`/api/files/${id}`, {cache:'no-store'})).json();
+  box.replaceChildren(...(files.length ? files.map(f => {
+    const del = el('button', {textContent:'✕', title:'Delete', onclick: async () => {
+      if (!confirm(`Delete ${f.name} from the server?`)) return;
+      await fetch(`/api/files/${id}/${encodeURIComponent(f.name)}`, {method:'DELETE'});
+      renderFiles(box, id);
+    }});
+    return el('div', {className:'f'}, el('a', {href:`/api/files/${id}/${encodeURIComponent(f.name)}`, textContent:f.name, title:f.name}), el('span', {textContent:fmt(f.size)}), del);
+  }) : [el('div', {className:'none', textContent:'No saved files yet.'})]));
+}
+
+(async () => {
+  const apps = await (await fetch('/api/apps', {cache:'no-store'})).json();
+  document.getElementById('grid').replaceChildren(...apps.map(a => {
+    const box = el('div', {className:'filelist'});
+    const filesBtn = el('button', {className:'files', textContent:`Files (${a.files})`, onclick: () => {
+      box.classList.toggle('on'); if (box.classList.contains('on')) renderFiles(box, a.id);
+    }});
+    const open = el('a', {className:'open', href:`/apps/${a.id}/`, textContent: a.installed ? 'Open' : 'Not installed yet'});
+    if (!a.installed) open.setAttribute('aria-disabled', 'true');
+    const card = el('section', {className:'card'},
+      el('h2', {textContent:a.name}),
+      el('p', {className:'blurb', textContent:a.blurb}),
+      el('div', {className:'meta'}, ...(a.version ? [el('span', {textContent:a.version})] : []), el('span', {textContent:'Apache-2.0'})),
+      el('div', {className:'actions'}, open, filesBtn), box);
+    card.style.setProperty('--accent', a.accent);
+    return card;
+  }));
+})();
+</script>
+</body>
+</html>

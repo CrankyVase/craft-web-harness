@@ -1,0 +1,9 @@
+[
+  {"id":"photocraft","name":"PhotoCraft","blurb":"Image editor","upstream":"storytold/photocraft","webRepo":"CrankyVase/photocraft-web","accent":"#e5484d"},
+  {"id":"vectorcraft","name":"VectorCraft","blurb":"Vector illustration","upstream":"storytold/vectorcraft","webRepo":"CrankyVase/vectorcraft-web","accent":"#f5a524"},
+  {"id":"filmcraft","name":"FilmCraft","blurb":"Video editor","upstream":"storytold/filmcraft","webRepo":"CrankyVase/filmcraft-web","accent":"#8e4ec6"},
+  {"id":"lightcraft","name":"LightCraft","blurb":"Photo library and raw developer","upstream":"storytold/lightcraft","webRepo":"CrankyVase/lightcraft-web","accent":"#f1c40f"},
+  {"id":"pdfcraft","name":"PdfCraft","blurb":"PDF workbench","upstream":"storytold/pdfcraft","webRepo":"CrankyVase/pdfcraft-web","accent":"#d6409f"},
+  {"id":"effectcraft","name":"EffectCraft","blurb":"Motion graphics and effects","upstream":"storytold/effectcraft","webRepo":"CrankyVase/effectcraft-web","accent":"#3e63dd"},
+  {"id":"designcraft","name":"DesignCraft","blurb":"Page layout and publishing","upstream":"storytold/designcraft","webRepo":"CrankyVase/designcraft-web","accent":"#30a46c"}
+]

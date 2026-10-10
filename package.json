@@ -1,0 +1,12 @@
+{
+  "name": "craft-web-harness",
+  "version": "1.0.0",
+  "description": "Launcher and file-saving harness for the Craft web apps",
+  "type": "module",
+  "license": "Apache-2.0",
+  "scripts": {
+    "start": "node server.js",
+    "update": "node scripts/update.mjs"
+  },
+  "engines": { "node": ">=20" }
+}
